@@ -147,3 +147,12 @@ endOfInput = lift Attoparsec.endOfInput
 
 atEnd :: Parser Bool
 atEnd = lift Attoparsec.atEnd
+
+lookAhead :: Parser a -> Parser a
+lookAhead p = p
+
+-- | Apply a parser without consuming any input.
+lookAhead' :: Attoparsec.Parser i a -> Attoparsec.Parser i a
+lookAhead' p = Attoparsec.Parser $ \t pos more lose succ ->
+  let succ' t' _pos' more' = succ t' pos more'
+  in runParser p t pos more lose succ'

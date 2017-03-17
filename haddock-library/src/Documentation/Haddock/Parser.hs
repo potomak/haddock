@@ -28,11 +28,11 @@ import           Data.List (stripPrefix, intercalate, unfoldr)
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid
 import           Documentation.Haddock.Doc
-import           Documentation.Haddock.Parser.Monad hiding (take, endOfLine)
+import           Documentation.Haddock.Parser.Monad hiding (endOfLine)
 import           Documentation.Haddock.Parser.Util
 import           Documentation.Haddock.Types
 import           Documentation.Haddock.Utf8
-import           Prelude hiding (takeWhile)
+import           Prelude hiding (takeWhile, take)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -437,40 +437,44 @@ takeIndent = do
 -- > +----------+----------+
 table :: Parser (DocH mod Identifier)
 table = do
-  parseTableRowDivider
-  mHeader <- optional parseTableHeader
-  content <- parseTableContent
+  columnLengths <- parseTableRowDivider
+  mHeader <- optional (parseTableHeader columnLengths)
+  content <- parseTableContent columnLengths
   return $ DocTable (Table mHeader content)
 
-parseTableHeader :: Parser [DocH mod Identifier]
-parseTableHeader = parseTableRow <* parseTableHeaderDivider
+parseTableHeader :: [Int] -> Parser [DocH mod Identifier]
+parseTableHeader cl = parseTableRow cl <* parseTableHeaderDivider
 
-parseTableContent :: Parser [[DocH mod Identifier]]
-parseTableContent = many1 (parseTableRow <* parseTableRowDivider)
+parseTableContent :: [Int] -> Parser [[DocH mod Identifier]]
+parseTableContent cl = many1 (parseTableRow cl <* parseTableRowDivider)
 
-parseTableRow :: Parser [DocH mod Identifier]
-parseTableRow = skipHorizontalSpace *> manyTill columnValue endOfRow
+parseTableRow :: [Int] -> Parser [DocH mod Identifier]
+parseTableRow _ = --skipHorizontalSpace *> manyTill columnValue endOfRowLine
+    return []
   where
-    columnValue = parseStringBS . bsStrip <$> ("|" *> takeWhile_ (/= '|'))
-    endOfRow = "|" *> skipHorizontalSpace *> "\n"
-    bsStrip = bsDropWhile isSpace . bsDropWhileEnd isSpace
-    bsDropWhile c = snd . BS.span c
-    bsDropWhileEnd c = fst . BS.spanEnd c
+    endOfRowLine = "|" *> skipHorizontalSpace *> "\n"
+    columnValue :: Int -> Parser BS.ByteString
+    columnValue n = "|" *> take n
+    columnValues :: [Int] -> Parser [BS.ByteString]
+    columnValues ns = skipHorizontalSpace *> mapM columnValue ns <* endOfRowLine
+    rowLines ns = manyTill (columnValues ns) (lookAhead (skipHorizontalSpace *> "+"))
 
-parseTableRowDivider :: Parser ()
+
+parseTableRowDivider :: Parser [Int]
 parseTableRowDivider = parseTableDivider "-"
 
-parseTableHeaderDivider :: Parser ()
+parseTableHeaderDivider :: Parser [Int]
 parseTableHeaderDivider = parseTableDivider "="
 
-parseTableDivider :: Parser BS.ByteString -> Parser ()
-parseTableDivider c = void $
-       skipHorizontalSpace
-    *> many1 (columnDivider c) *> "+"
-    *> skipHorizontalSpace *> "\n"
+parseTableDivider :: Parser BS.ByteString -> Parser [Int]
+parseTableDivider c = fmap ((-) 1 . length) <$> tableDivider
   where
     columnDivider :: Parser BS.ByteString -> Parser [BS.ByteString]
     columnDivider d = "+" *> many1 d
+    tableDivider =
+         skipHorizontalSpace
+      *> many1 (columnDivider c) <* "+"
+      <* skipHorizontalSpace <* "\n"
 
 -- | Blocks of text of the form:
 --

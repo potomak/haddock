@@ -3,4 +3,4 @@
 export HADDOCK_PATH=$(which haddock)
 LIB_PATH="$(dirname "$BASH_SOURCE")/../haddock-test/src/"
 MAIN_PATH="$(dirname "$BASH_SOURCE")/Main.hs"
-runhaskell -i:"$LIB_PATH" $MAIN_PATH $@
+stack runhaskell -- -i:"$LIB_PATH" $MAIN_PATH $@
